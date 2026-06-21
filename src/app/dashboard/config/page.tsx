@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface ParserRow {
   id: string
@@ -16,22 +16,32 @@ interface EmailConfigRow {
   id: string
   email_address: string
   is_active: boolean
+  token_expires_at: string | null
 }
 
 export default function ConfigPage() {
   const supabase = createClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [emailConfig, setEmailConfig] = useState<EmailConfigRow | null>(null);
-  const [emailAddress, setEmailAddress] = useState("");
-  const [accessToken, setAccessToken] = useState("");
-  const [refreshToken, setRefreshToken] = useState("");
-
   const [parsers, setParsers] = useState<ParserRow[]>([]);
   const [newName, setNewName] = useState("");
   const [newSender, setNewSender] = useState("");
   const [newType, setNewType] = useState("grupo_mutual");
   const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const error = searchParams.get("error");
+    const success = searchParams.get("success");
+    if (error === "google_auth_denied") setMessage("Autorización cancelada.");
+    else if (error === "state_mismatch") setMessage("Error de seguridad. Intenta de nuevo.");
+    else if (error === "no_tokens") setMessage("No se obtuvieron tokens de Google.");
+    else if (error === "save_failed") setMessage("Error al guardar en la base de datos.");
+    else if (error === "session_expired") setMessage("Sesión expirada. Inicia sesión de nuevo.");
+    else if (success === "google_connected") setMessage("¡Cuenta de Gmail conectada exitosamente!");
+  }, [searchParams]);
 
   useEffect(() => {
     loadData();
@@ -49,12 +59,7 @@ export default function ConfigPage() {
       .select("*")
       .single();
 
-    if (emailData) {
-      setEmailConfig(emailData);
-      setEmailAddress(emailData.email_address);
-      setAccessToken(emailData.access_token ?? "");
-      setRefreshToken(emailData.refresh_token ?? "");
-    }
+    if (emailData) setEmailConfig(emailData);
 
     const { data: parsersData } = await supabase
       .from("parsers")
@@ -64,33 +69,11 @@ export default function ConfigPage() {
     if (parsersData) setParsers(parsersData);
   }
 
-  async function saveEmailConfig(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const payload = {
-      user_id: user.id,
-      email_address: emailAddress,
-      provider: "gmail",
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      is_active: true,
-    };
-
-    if (emailConfig) {
-      await supabase
-        .from("email_configs")
-        .update(payload)
-        .eq("id", emailConfig.id);
-    } else {
-      await supabase.from("email_configs").insert(payload);
-    }
-
-    setSaving(false);
-    loadData();
+  async function disconnectGoogle() {
+    if (!emailConfig) return;
+    await supabase.from("email_configs").delete().eq("id", emailConfig.id);
+    setEmailConfig(null);
+    setMessage("Cuenta de Gmail desconectada.");
   }
 
   async function addParser(e: React.FormEvent) {
@@ -129,56 +112,65 @@ export default function ConfigPage() {
 
   return (
     <div className="space-y-8">
+      {message && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          {message}
+          <button
+            onClick={() => setMessage(null)}
+            className="ml-2 font-medium"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <section className="rounded-xl border bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-lg font-semibold">
-          Configuración de acceso a Gmail
+          Acceso a Gmail
         </h2>
-        <p className="mb-4 text-sm text-gray-600">
-          Ingresa las credenciales OAuth de Gmail para poder leer los correos.
-          Necesitas un proyecto en Google Cloud Console con la API de Gmail
-          habilitada.
-        </p>
 
-        <form onSubmit={saveEmailConfig} className="space-y-3">
-          <label className="block text-sm font-medium">
-            Correo a monitorear
-            <input
-              type="email"
-              value={emailAddress}
-              onChange={(e) => setEmailAddress(e.target.value)}
-              required
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-              placeholder="tucorreo@gmail.com"
-            />
-          </label>
-          <label className="block text-sm font-medium">
-            Access Token
-            <input
-              type="text"
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              required
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono"
-            />
-          </label>
-          <label className="block text-sm font-medium">
-            Refresh Token
-            <input
-              type="text"
-              value={refreshToken}
-              onChange={(e) => setRefreshToken(e.target.value)}
-              required
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono"
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? "Guardando..." : "Guardar configuración"}
-          </button>
-        </form>
+        {emailConfig ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+              <span className="text-2xl">✅</span>
+              <div>
+                <p className="font-medium text-green-800">
+                  Conectado como {emailConfig.email_address}
+                </p>
+                <p className="text-xs text-green-600">
+                  {emailConfig.token_expires_at
+                    ? `Token expira: ${new Date(emailConfig.token_expires_at).toLocaleString()}`
+                    : "Tokens configurados"}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={disconnectGoogle}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            >
+              Desconectar cuenta
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Conectá una cuenta de Gmail para que el sistema pueda leer los
+              correos de depósitos.
+            </p>
+            <a
+              href="/api/auth/google"
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+              </svg>
+              Conectar con Google
+            </a>
+          </div>
+        )}
       </section>
 
       <section className="rounded-xl border bg-white p-6 shadow-sm">
