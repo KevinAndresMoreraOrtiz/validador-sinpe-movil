@@ -40,6 +40,7 @@ export default function ConfigPage() {
     else if (error === "no_tokens") setMessage("No se obtuvieron tokens de Google.");
     else if (error === "save_failed") setMessage("Error al guardar en la base de datos.");
     else if (error === "session_expired") setMessage("Sesión expirada. Inicia sesión de nuevo.");
+    else if (error === "google_callback_failed") setMessage("Error al conectar con Google. Intenta de nuevo.");
     else if (success === "google_connected") setMessage("¡Cuenta de Gmail conectada exitosamente!");
   }, [searchParams]);
 
