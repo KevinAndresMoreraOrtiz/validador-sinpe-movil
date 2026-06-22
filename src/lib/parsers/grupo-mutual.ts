@@ -19,10 +19,10 @@ export class GrupoMutualParser implements EmailParser {
 
   parse(body: string): ParsedDeposit {
     const originMatch = body.match(
-      /el origen de la transferencia es (\d+)\s*a nombre de\s*([^.\n]+)/i
+      /el origen de la transferencia es\s*(\d+)\s*a nombre de\s*(.+?)\s*y el destino de la transferencia/i
     );
     const destinationMatch = body.match(
-      /el destino de la transferencia es\s*([^\s]+)\s*a nombre de\s*([^.\n]+)/i
+      /el destino de la transferencia es\s*(\S+)\s*a nombre de\s*(.+?)\.\s*La transferencia/i
     );
     const conceptMatch = body.match(/por concepto de\s*"([^"]*)"/i);
     const amountMatch = body.match(
@@ -53,7 +53,7 @@ export class GrupoMutualParser implements EmailParser {
           ? "USD"
           : "CRC"
         : "CRC",
-      concept: conceptMatch?.[1] ?? null,
+      concept: conceptMatch?.[1]?.trim() || null,
       date: parsedDate,
       raw_email_text: body,
     };
