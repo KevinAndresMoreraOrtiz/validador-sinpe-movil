@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { sinpemovil } from "@/lib/supabase/sinpemovil";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -31,7 +32,7 @@ export default function TokensPage() {
       return;
     }
 
-    const { data } = await supabase
+    const { data } = await sinpemovil(supabase)
       .from("api_tokens")
       .select("*")
       .order("created_at", { ascending: false });
@@ -61,7 +62,7 @@ export default function TokensPage() {
   }
 
   async function toggleToken(id: string, current: boolean) {
-    await supabase
+    await sinpemovil(supabase)
       .from("api_tokens")
       .update({ is_active: !current })
       .eq("id", id);
@@ -69,7 +70,7 @@ export default function TokensPage() {
   }
 
   async function deleteToken(id: string) {
-    await supabase.from("api_tokens").delete().eq("id", id);
+    await sinpemovil(supabase).from("api_tokens").delete().eq("id", id);
     loadTokens();
   }
 

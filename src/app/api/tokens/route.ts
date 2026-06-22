@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { sinpemovil } from "@/lib/supabase/sinpemovil";
 import { generateApiToken, hashToken } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
   const rawToken = generateApiToken();
   const hashed = hashToken(rawToken);
 
-  await supabase.from("api_tokens").insert({
+  await sinpemovil(supabase).from("api_tokens").insert({
     user_id: user.id,
     name,
     token: hashed,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sinpemovil } from "@/lib/supabase/sinpemovil";
 import { fetchEmailsFromSender } from "@/lib/gmail/service";
 import { findParser } from "@/lib/parsers/registry";
 import { hashToken } from "@/lib/utils";
@@ -17,7 +18,9 @@ export async function GET(request: NextRequest) {
     const supabase = createAdminClient();
 
     const hashed = hashToken(token);
-    const { data: tokenRecord, error: tokenError } = await supabase
+    const db = sinpemovil(supabase);
+
+    const { data: tokenRecord, error: tokenError } = await db
       .from("api_tokens")
       .select("id, user_id, is_active")
       .eq("token", hashed)
@@ -30,12 +33,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await supabase
+    await db
       .from("api_tokens")
       .update({ last_used_at: new Date().toISOString() })
       .eq("id", tokenRecord.id);
 
-    const { data: parsers, error: parsersError } = await supabase
+    const { data: parsers, error: parsersError } = await db
       .from("parsers")
       .select("*")
       .eq("is_active", true);
@@ -47,7 +50,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data: emailConfig, error: configError } = await supabase
+    const { data: emailConfig, error: configError } = await db
       .from("email_configs")
       .select("*")
       .eq("is_active", true)
@@ -79,14 +82,14 @@ export async function GET(request: NextRequest) {
 
         const parsed = matcher.parse(email.body);
 
-        const { data: existing } = await supabase
+        const { data: existing } = await db
           .from("parsed_deposits")
           .select("id")
           .eq("reference_number", parsed.reference_number)
           .single();
 
         if (!existing) {
-          await supabase.from("parsed_deposits").insert({
+          await db.from("parsed_deposits").insert({
             parser_id: parser.id,
             reference_number: parsed.reference_number,
             origin_number: parsed.origin_number,

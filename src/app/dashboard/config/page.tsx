@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { sinpemovil } from "@/lib/supabase/sinpemovil";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -55,14 +56,16 @@ export default function ConfigPage() {
       return;
     }
 
-    const { data: emailData } = await supabase
+    const db = sinpemovil(supabase);
+
+    const { data: emailData } = await db
       .from("email_configs")
       .select("*")
       .single();
 
     if (emailData) setEmailConfig(emailData);
 
-    const { data: parsersData } = await supabase
+    const { data: parsersData } = await db
       .from("parsers")
       .select("*")
       .order("created_at");
@@ -72,7 +75,7 @@ export default function ConfigPage() {
 
   async function disconnectGoogle() {
     if (!emailConfig) return;
-    await supabase.from("email_configs").delete().eq("id", emailConfig.id);
+    await sinpemovil(supabase).from("email_configs").delete().eq("id", emailConfig.id);
     setEmailConfig(null);
     setMessage("Cuenta de Gmail desconectada.");
   }
@@ -84,7 +87,7 @@ export default function ConfigPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase.from("parsers").insert({
+    await sinpemovil(supabase).from("parsers").insert({
       user_id: user.id,
       name: newName,
       sender_email: newSender,
@@ -99,7 +102,7 @@ export default function ConfigPage() {
   }
 
   async function toggleParser(id: string, current: boolean) {
-    await supabase
+    await sinpemovil(supabase)
       .from("parsers")
       .update({ is_active: !current })
       .eq("id", id);
@@ -107,7 +110,7 @@ export default function ConfigPage() {
   }
 
   async function deleteParser(id: string) {
-    await supabase.from("parsers").delete().eq("id", id);
+    await sinpemovil(supabase).from("parsers").delete().eq("id", id);
     loadData();
   }
 

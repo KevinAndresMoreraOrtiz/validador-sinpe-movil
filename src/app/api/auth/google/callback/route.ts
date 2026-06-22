@@ -2,6 +2,7 @@ import { google } from "googleapis";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { sinpemovil } from "@/lib/supabase/sinpemovil";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
     redirect("/login?error=session_expired");
   }
 
-  const { error: upsertError } = await supabase.from("email_configs").upsert(
+  const { error: upsertError } = await sinpemovil(supabase).from("email_configs").upsert(
     {
       user_id: user.id,
       email_address: email,
