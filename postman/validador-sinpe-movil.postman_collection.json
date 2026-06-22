@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Validador SINPE Móvil",
-    "description": "# Validador SINPE Móvil API\n\nSistema que lee correos de depósitos SINPE Móvil desde Gmail, los parsea y expone los datos vía API REST.\n\n## Flujo general\n\n1. **Configurar** cuenta Gmail y bancos/remitentes en el dashboard (`/dashboard/config`).\n2. **Crear token API** en `/dashboard/tokens` o con `POST /api/tokens` (requiere sesión).\n3. **Consultar depósitos** con `GET /api/deposits?token={api_token}`.\n\n## Autenticación\n\n| Endpoint | Auth |\n|----------|------|\n| `GET /api/deposits` | Query param `token` (API token `smp_...`) |\n| `POST /api/tokens` | Cookie de sesión Supabase (login en dashboard) |\n| OAuth Google/Gmail | Flujo navegador (no usable desde Postman) |\n\n## Formato del token API\n\n- Prefijo: `smp_`\n- 64 caracteres hex tras el prefijo\n- Se muestra **una sola vez** al crearlo\n- En BD se guarda hasheado (SHA-256)\n\n## Esquema de base de datos\n\nTablas en esquema Supabase `sinpemovil`:\n- `email_configs` — tokens OAuth Gmail\n- `parsers` — bancos/remitentes configurados\n- `api_tokens` — tokens de acceso a la API\n- `parsed_deposits` — depósitos ya procesados\n\n## URL base\n\n- **Producción:** `https://validador-sinpe-movil.vercel.app`\n- **Local:** `http://localhost:3000`",
+    "description": "# Validador SINPE Móvil API\n\nSistema que lee correos de depósitos SINPE Móvil desde Gmail, los parsea y expone los datos vía API REST.\n\n## Flujo general\n\n1. **Configurar** cuenta Gmail y bancos/remitentes en el dashboard (`/dashboard/config`).\n2. **Crear token API** en `/dashboard/tokens` o con `POST /api/tokens` (requiere sesión).\n3. **Consultar depósitos** con `GET /api/deposits?token={api_token}&days={days}`.\n\n## Parámetro `days`\n\n| Valor | Uso |\n|-------|-----|\n| `1` | Solo correos de hoy (recomendado) |\n| `7` | Última semana (default del servidor si se omite) |\n| `30` | Último mes (máximo permitido) |\n\n## Autenticación\n\n| Endpoint | Auth |\n|----------|------|\n| `GET /api/deposits` | Query param `token` (API token `smp_...`) |\n| `POST /api/tokens` | Cookie de sesión Supabase (login en dashboard) |\n| OAuth Google/Gmail | Flujo navegador (no usable desde Postman) |\n\n## Formato del token API\n\n- Prefijo: `smp_`\n- 64 caracteres hex tras el prefijo\n- Se muestra **una sola vez** al crearlo\n- En BD se guarda hasheado (SHA-256)\n\n## Esquema de base de datos\n\nTablas en esquema Supabase `sinpemovil`:\n- `email_configs` — tokens OAuth Gmail\n- `parsers` — bancos/remitentes configurados\n- `api_tokens` — tokens de acceso a la API\n- `parsed_deposits` — depósitos ya procesados\n\n## URL base\n\n- **Producción:** `https://validador-sinpe-movil.vercel.app`\n- **Local:** `http://localhost:3000`",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -13,15 +13,50 @@
     {
       "key": "api_token",
       "value": "smp_REEMPLAZAR_CON_TU_TOKEN"
+    },
+    {
+      "key": "days",
+      "value": "1"
     }
   ],
   "item": [
     {
       "name": "Depósitos",
-      "description": "Endpoint público para consultar depósitos SINPE Móvil parseados desde Gmail.\n\n**Requisitos previos:**\n- Gmail conectado y activo\n- Al menos un parser/banco activo\n- Token API válido y activo\n\nEl endpoint lee correos del último día de cada remitente configurado, los parsea y persiste los nuevos en `sinpemovil.parsed_deposits`.",
+      "description": "Endpoint público para consultar depósitos SINPE Móvil parseados desde Gmail.\n\n**Requisitos previos:**\n- Gmail conectado y activo\n- Al menos un parser/banco activo\n- Token API válido y activo\n\n**Parámetro `days`:** controla cuántos días hacia atrás buscar en Gmail (default servidor: 7, máx: 30). Usa `days=1` para solo hoy.",
       "item": [
         {
-          "name": "Obtener depósitos",
+          "name": "Obtener depósitos — hoy (days=1)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/deposits?token={{api_token}}&days=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "deposits"],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{api_token}}",
+                  "description": "Token API generado en el dashboard (formato smp_...)"
+                },
+                {
+                  "key": "days",
+                  "value": "1",
+                  "description": "Solo correos de hoy"
+                }
+              ]
+            },
+            "description": "Consulta depósitos del **día actual**.\n\n```\nGET /api/deposits?token={{api_token}}&days=1\n```\n\n### Parámetros\n\n| Parámetro | Tipo | Requerido | Descripción |\n|-----------|------|-----------|-------------|\n| `token` | query | Sí | Token API (`smp_...`) |\n| `days` | query | No | Días hacia atrás (este request usa `1`) |"
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener depósitos — últimos 7 días",
           "request": {
             "method": "GET",
             "header": [
@@ -43,11 +78,73 @@
                 {
                   "key": "days",
                   "value": "7",
-                  "description": "Días hacia atrás para buscar correos (default 7, máx 30)"
+                  "description": "Últimos 7 días (default del servidor)"
                 }
               ]
             },
-            "description": "Consulta depósitos SINPE Móvil desde los correos configurados.\n\n### Parámetros\n\n| Parámetro | Tipo | Requerido | Descripción |\n|-----------|------|-----------|-------------|\n| `token` | query | Sí | Token API (`smp_...`) creado en `/dashboard/tokens` |\n\n### Respuesta exitosa (200)\n\n```json\n{\n  \"success\": true,\n  \"data\": [\n    {\n      \"reference_number\": \"123456789\",\n      \"origin_number\": \"88887777\",\n      \"origin_name\": \"Juan Pérez\",\n      \"destination_number\": \"CR12345678901234567890\",\n      \"destination_name\": \"Cuenta destino\",\n      \"amount\": 50000,\n      \"currency\": \"CRC\",\n      \"concept\": \"Pago servicio\",\n      \"date\": \"2026-06-21T14:30:00\",\n      \"raw_email_text\": \"...\"\n    }\n  ]\n}\n```\n\n### Errores\n\n| Status | error | Causa |\n|--------|-------|-------|\n| 401 | Token requerido | Falta query param `token` |\n| 401 | Token inválido o inactivo | Token incorrecto o desactivado |\n| 404 | No hay parsers configurados | Sin bancos activos en config |\n| 404 | No hay configuración de correo activa | Gmail no conectado |\n| 500 | Error interno del servidor | Fallo Gmail/Supabase |\n\n### Parsers soportados\n\n| parser_type | Remitente típico | Detecta |\n|-------------|------------------|--------|\n| `grupo_mutual` | Grupo Mutual | Correos \"Sinpe Móvil Mutual\" con transferencia |"
+            "description": "Consulta depósitos de la **última semana**.\n\n```\nGET /api/deposits?token={{api_token}}&days=7\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener depósitos — últimos 30 días",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/deposits?token={{api_token}}&days=30",
+              "host": ["{{base_url}}"],
+              "path": ["api", "deposits"],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{api_token}}",
+                  "description": "Token API generado en el dashboard (formato smp_...)"
+                },
+                {
+                  "key": "days",
+                  "value": "30",
+                  "description": "Últimos 30 días (máximo permitido)"
+                }
+              ]
+            },
+            "description": "Consulta depósitos del **último mes** (máximo permitido).\n\n```\nGET /api/deposits?token={{api_token}}&days=30\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener depósitos (con variable days)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/deposits?token={{api_token}}&days={{days}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "deposits"],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{api_token}}",
+                  "description": "Token API generado en el dashboard (formato smp_...)"
+                },
+                {
+                  "key": "days",
+                  "value": "{{days}}",
+                  "description": "Días hacia atrás para buscar correos (default variable: 1, máx 30)"
+                }
+              ]
+            },
+            "description": "Consulta depósitos usando la variable de colección `{{days}}` (editable en Variables de colección).\n\n### Parámetros\n\n| Parámetro | Tipo | Requerido | Descripción |\n|-----------|------|-----------|-------------|\n| `token` | query | Sí | Token API (`smp_...`) creado en `/dashboard/tokens` |\n| `days` | query | No | Días hacia atrás (default servidor: 7, máx: 30). Variable Postman default: 1 |\n\n### Respuesta exitosa (200)\n\n```json\n{\n  \"success\": true,\n  \"data\": [\n    {\n      \"reference_number\": \"123456789\",\n      \"origin_number\": \"88887777\",\n      \"origin_name\": \"Juan Pérez\",\n      \"destination_number\": \"CR12345678901234567890\",\n      \"destination_name\": \"Cuenta destino\",\n      \"amount\": 50000,\n      \"currency\": \"CRC\",\n      \"concept\": \"Pago servicio\",\n      \"date\": \"2026-06-21T14:30:00\",\n      \"raw_email_text\": \"...\"\n    }\n  ]\n}\n```\n\n### Errores\n\n| Status | error | Causa |\n|--------|-------|-------|\n| 401 | Token requerido | Falta query param `token` |\n| 401 | Token inválido o inactivo | Token incorrecto o desactivado |\n| 404 | No hay parsers configurados | Sin bancos activos en config |\n| 404 | No hay configuración de correo activa | Gmail no conectado |\n| 500 | Error interno del servidor | Fallo Gmail/Supabase |\n\n### Parsers soportados\n\n| parser_type | Remitente típico | Detecta |\n|-------------|------------------|--------|\n| `grupo_mutual` | Grupo Mutual | Correos \"Sinpe Móvil Mutual\" con transferencia |"
           },
           "response": [
             {
