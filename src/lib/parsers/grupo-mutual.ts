@@ -5,10 +5,15 @@ export class GrupoMutualParser implements EmailParser {
   type = "grupo_mutual";
 
   canParse(body: string): boolean {
+    const text = body
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "");
+
     return (
-      body.includes("Grupo Mutual") &&
-      body.includes("Sinpe Móvil Mutual") &&
-      body.includes("transferencia")
+      text.includes("grupo mutual") &&
+      text.includes("sinpe movil mutual") &&
+      text.includes("transferencia")
     );
   }
 

@@ -1,0 +1,396 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Validador SINPE Móvil",
+    "description": "# Validador SINPE Móvil API\n\nSistema que lee correos de depósitos SINPE Móvil desde Gmail, los parsea y expone los datos vía API REST.\n\n## Flujo general\n\n1. **Configurar** cuenta Gmail y bancos/remitentes en el dashboard (`/dashboard/config`).\n2. **Crear token API** en `/dashboard/tokens` o con `POST /api/tokens` (requiere sesión).\n3. **Consultar depósitos** con `GET /api/deposits?token={api_token}`.\n\n## Autenticación\n\n| Endpoint | Auth |\n|----------|------|\n| `GET /api/deposits` | Query param `token` (API token `smp_...`) |\n| `POST /api/tokens` | Cookie de sesión Supabase (login en dashboard) |\n| OAuth Google/Gmail | Flujo navegador (no usable desde Postman) |\n\n## Formato del token API\n\n- Prefijo: `smp_`\n- 64 caracteres hex tras el prefijo\n- Se muestra **una sola vez** al crearlo\n- En BD se guarda hasheado (SHA-256)\n\n## Esquema de base de datos\n\nTablas en esquema Supabase `sinpemovil`:\n- `email_configs` — tokens OAuth Gmail\n- `parsers` — bancos/remitentes configurados\n- `api_tokens` — tokens de acceso a la API\n- `parsed_deposits` — depósitos ya procesados\n\n## URL base\n\n- **Producción:** `https://validador-sinpe-movil.vercel.app`\n- **Local:** `http://localhost:3000`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://validador-sinpe-movil.vercel.app"
+    },
+    {
+      "key": "api_token",
+      "value": "smp_REEMPLAZAR_CON_TU_TOKEN"
+    }
+  ],
+  "item": [
+    {
+      "name": "Depósitos",
+      "description": "Endpoint público para consultar depósitos SINPE Móvil parseados desde Gmail.\n\n**Requisitos previos:**\n- Gmail conectado y activo\n- Al menos un parser/banco activo\n- Token API válido y activo\n\nEl endpoint lee correos del último día de cada remitente configurado, los parsea y persiste los nuevos en `sinpemovil.parsed_deposits`.",
+      "item": [
+        {
+          "name": "Obtener depósitos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/deposits?token={{api_token}}&days=7",
+              "host": ["{{base_url}}"],
+              "path": ["api", "deposits"],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{api_token}}",
+                  "description": "Token API generado en el dashboard (formato smp_...)"
+                },
+                {
+                  "key": "days",
+                  "value": "7",
+                  "description": "Días hacia atrás para buscar correos (default 7, máx 30)"
+                }
+              ]
+            },
+            "description": "Consulta depósitos SINPE Móvil desde los correos configurados.\n\n### Parámetros\n\n| Parámetro | Tipo | Requerido | Descripción |\n|-----------|------|-----------|-------------|\n| `token` | query | Sí | Token API (`smp_...`) creado en `/dashboard/tokens` |\n\n### Respuesta exitosa (200)\n\n```json\n{\n  \"success\": true,\n  \"data\": [\n    {\n      \"reference_number\": \"123456789\",\n      \"origin_number\": \"88887777\",\n      \"origin_name\": \"Juan Pérez\",\n      \"destination_number\": \"CR12345678901234567890\",\n      \"destination_name\": \"Cuenta destino\",\n      \"amount\": 50000,\n      \"currency\": \"CRC\",\n      \"concept\": \"Pago servicio\",\n      \"date\": \"2026-06-21T14:30:00\",\n      \"raw_email_text\": \"...\"\n    }\n  ]\n}\n```\n\n### Errores\n\n| Status | error | Causa |\n|--------|-------|-------|\n| 401 | Token requerido | Falta query param `token` |\n| 401 | Token inválido o inactivo | Token incorrecto o desactivado |\n| 404 | No hay parsers configurados | Sin bancos activos en config |\n| 404 | No hay configuración de correo activa | Gmail no conectado |\n| 500 | Error interno del servidor | Fallo Gmail/Supabase |\n\n### Parsers soportados\n\n| parser_type | Remitente típico | Detecta |\n|-------------|------------------|--------|\n| `grupo_mutual` | Grupo Mutual | Correos \"Sinpe Móvil Mutual\" con transferencia |"
+          },
+          "response": [
+            {
+              "name": "200 - Depósitos encontrados",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/deposits?token={{api_token}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "deposits"],
+                  "query": [
+                    {
+                      "key": "token",
+                      "value": "{{api_token}}"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"reference_number\": \"987654321\",\n      \"origin_number\": \"60123456\",\n      \"origin_name\": \"María González\",\n      \"destination_number\": \"CR05012345678901234567\",\n      \"destination_name\": \"Empresa Ejemplo S.A.\",\n      \"amount\": 25000,\n      \"currency\": \"CRC\",\n      \"concept\": \"Factura 001\",\n      \"date\": \"2026-06-21T10:15:30\",\n      \"raw_email_text\": \"Grupo Mutual le informa que se ha recibido una transferencia Sinpe Móvil Mutual...\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "401 - Token requerido",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/deposits",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "deposits"]
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"data\": [],\n  \"error\": \"Token requerido\"\n}"
+            },
+            {
+              "name": "401 - Token inválido",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/deposits?token=smp_invalido",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "deposits"],
+                  "query": [
+                    {
+                      "key": "token",
+                      "value": "smp_invalido"
+                    }
+                  ]
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"data\": [],\n  \"error\": \"Token inválido o inactivo\"\n}"
+            },
+            {
+              "name": "404 - Sin parsers",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/deposits?token={{api_token}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "deposits"],
+                  "query": [
+                    {
+                      "key": "token",
+                      "value": "{{api_token}}"
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"data\": [],\n  \"error\": \"No hay parsers configurados\"\n}"
+            },
+            {
+              "name": "404 - Sin Gmail",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/deposits?token={{api_token}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "deposits"],
+                  "query": [
+                    {
+                      "key": "token",
+                      "value": "{{api_token}}"
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"data\": [],\n  \"error\": \"No hay configuración de correo activa\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tokens API",
+      "description": "Creación de tokens API. Requiere sesión activa de Supabase (login en el dashboard).\n\n**Recomendación:** crear tokens desde la UI en `/dashboard/tokens` y copiar el valor generado a la variable `api_token` del entorno Postman.",
+      "item": [
+        {
+          "name": "Crear token API",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman - Desarrollo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/tokens",
+              "host": ["{{base_url}}"],
+              "path": ["api", "tokens"]
+            },
+            "description": "Crea un nuevo token API para el usuario autenticado.\n\n### Autenticación\n\nRequiere cookie de sesión Supabase. Para usar desde Postman:\n\n1. Inicia sesión en `{{base_url}}/login`\n2. En DevTools → Application → Cookies, copia las cookies de Supabase\n3. Agrégalas en Postman (dominio del `base_url`)\n\nO crea el token desde `/dashboard/tokens` en el navegador.\n\n### Body\n\n```json\n{\n  \"name\": \"Nombre descriptivo del token\"\n}\n```\n\n| Campo | Tipo | Requerido | Descripción |\n|-------|------|-----------|-------------|\n| `name` | string | Sí | Etiqueta del token (ej: \"Producción\", \"Postman\") |\n\n### Respuesta exitosa (200)\n\n```json\n{\n  \"token\": \"smp_a1b2c3d4e5f6...\"\n}\n```\n\n> **Importante:** el token en texto plano solo se devuelve una vez. Guárdalo de inmediato.\n\n### Errores\n\n| Status | Respuesta | Causa |\n|--------|-----------|-------|\n| 401 | `{ \"error\": \"No autorizado\" }` | Sin sesión activa |\n| 400 | `{ \"error\": \"Nombre requerido\" }` | Falta campo `name` |"
+          },
+          "response": [
+            {
+              "name": "200 - Token creado",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Postman - Desarrollo\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/tokens",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "tokens"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"token\": \"smp_f4e3d2c1b0a9876543210fedcba9876543210fedcba9876543210fedcba98\"\n}"
+            },
+            {
+              "name": "401 - No autorizado",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Test\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/tokens",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "tokens"]
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": \"No autorizado\"\n}"
+            },
+            {
+              "name": "400 - Nombre requerido",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/tokens",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "tokens"]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": \"Nombre requerido\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OAuth (referencia)",
+      "description": "Endpoints de autenticación OAuth. **No son invocables directamente desde Postman** — requieren flujo de navegador con redirecciones y cookies.\n\nConfigúralos desde el dashboard en `/dashboard/config` → **Conectar con Google**.",
+      "item": [
+        {
+          "name": "Iniciar OAuth Google (Gmail)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/google",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "google"]
+            },
+            "description": "Inicia el flujo OAuth 2.0 con Google para conectar Gmail.\n\n- **Método:** GET\n- **Respuesta:** 307 redirect a `accounts.google.com`\n- **Scope:** `gmail.readonly`\n- **Callback:** `{{base_url}}/api/auth/google/callback`\n\nAbrir en navegador estando logueado en el dashboard."
+          },
+          "response": []
+        },
+        {
+          "name": "Callback OAuth Google",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/google/callback?code=CODIGO&state=STATE",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "google", "callback"],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "CODIGO",
+                  "description": "Código de autorización (generado por Google)"
+                },
+                {
+                  "key": "state",
+                  "value": "STATE",
+                  "description": "State CSRF (cookie gmail_oauth_state)"
+                }
+              ]
+            },
+            "description": "Callback interno de Google OAuth. Google redirige aquí tras autorizar.\n\n- Guarda tokens en `sinpemovil.email_configs`\n- Obtiene email vía `gmail.users.getProfile`\n- Redirige a `/dashboard/config?success=google_connected`\n\n**Errores posibles (query param `error`):**\n- `google_auth_denied` — usuario canceló\n- `state_mismatch` — cookie state inválida\n- `no_tokens` — sin access/refresh token\n- `save_failed` — error Supabase\n- `google_callback_failed` — error en llamadas Google"
+          },
+          "response": []
+        },
+        {
+          "name": "Callback Supabase Auth",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/callback?code=CODIGO&next=/dashboard",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "callback"],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "CODIGO",
+                  "description": "Código PKCE de Supabase"
+                },
+                {
+                  "key": "next",
+                  "value": "/dashboard",
+                  "description": "Ruta de redirección tras login"
+                }
+              ]
+            },
+            "description": "Callback de autenticación Supabase (login email/password u OAuth Supabase).\n\nIntercambia `code` por sesión y redirige a `next`."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

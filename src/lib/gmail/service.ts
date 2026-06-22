@@ -73,15 +73,16 @@ function daysDaysAgo(days: number): string {
   return date.toISOString().split("T")[0];
 }
 
-function extractBody(
-  payload: unknown
-): string {
-  const parts: string[] = [];
+function extractBody(payload: unknown): string {
+  let plain = "";
+  let html = "";
 
   function walk(node: any): void {
     if (node.mimeType === "text/plain" && node.body?.data) {
-      const decoded = Buffer.from(node.body.data, "base64url").toString("utf-8");
-      parts.push(decoded);
+      plain += decodeBase64(node.body.data) + "\n";
+    }
+    if (node.mimeType === "text/html" && node.body?.data) {
+      html += decodeBase64(node.body.data) + "\n";
     }
     if (node.parts) {
       for (const part of node.parts) walk(part);
@@ -89,5 +90,31 @@ function extractBody(
   }
 
   walk(payload);
-  return parts.join("\n");
+
+  const text = plain.trim() || htmlToText(html);
+  return text.trim();
+}
+
+function decodeBase64(data: string): string {
+  return Buffer.from(data, "base64url").toString("utf-8");
+}
+
+function htmlToText(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&oacute;/gi, "ó")
+    .replace(/&aacute;/gi, "á")
+    .replace(/&eacute;/gi, "é")
+    .replace(/&iacute;/gi, "í")
+    .replace(/&uacute;/gi, "ú")
+    .replace(/&ntilde;/gi, "ñ")
+    .replace(/\s+/g, " ")
+    .trim();
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sinpemovil } from "@/lib/supabase/sinpemovil";
 import { fetchEmailsFromSender } from "@/lib/gmail/service";
-import { findParser } from "@/lib/parsers/registry";
+import { getParser } from "@/lib/parsers/registry";
 import { hashToken } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
@@ -38,9 +38,13 @@ export async function GET(request: NextRequest) {
       .update({ last_used_at: new Date().toISOString() })
       .eq("id", tokenRecord.id);
 
+    const daysBack = Number(request.nextUrl.searchParams.get("days") ?? "7");
+    const safeDays = Number.isFinite(daysBack) && daysBack > 0 ? Math.min(daysBack, 30) : 7;
+
     const { data: parsers, error: parsersError } = await db
       .from("parsers")
       .select("*")
+      .eq("user_id", tokenRecord.user_id)
       .eq("is_active", true);
 
     if (parsersError || !parsers?.length) {
@@ -53,6 +57,7 @@ export async function GET(request: NextRequest) {
     const { data: emailConfig, error: configError } = await db
       .from("email_configs")
       .select("*")
+      .eq("user_id", tokenRecord.user_id)
       .eq("is_active", true)
       .single();
 
@@ -69,18 +74,21 @@ export async function GET(request: NextRequest) {
 
     const allDeposits: any[] = [];
 
-    for (const parser of parsers) {
+    for (const parserConfig of parsers) {
+      const emailParser = getParser(parserConfig.parser_type);
+      if (!emailParser) continue;
+
       const emails = await fetchEmailsFromSender(
         emailConfig.access_token,
         emailConfig.refresh_token,
-        parser.sender_email
+        parserConfig.sender_email,
+        safeDays
       );
 
       for (const email of emails) {
-        const matcher = findParser(email.body);
-        if (!matcher) continue;
+        if (!emailParser.canParse(email.body)) continue;
 
-        const parsed = matcher.parse(email.body);
+        const parsed = emailParser.parse(email.body);
 
         const { data: existing } = await db
           .from("parsed_deposits")
@@ -90,7 +98,7 @@ export async function GET(request: NextRequest) {
 
         if (!existing) {
           await db.from("parsed_deposits").insert({
-            parser_id: parser.id,
+            parser_id: parserConfig.id,
             reference_number: parsed.reference_number,
             origin_number: parsed.origin_number,
             origin_name: parsed.origin_name,
