@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { isRedirectError, redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
@@ -71,7 +71,8 @@ export async function GET(request: Request) {
     }
 
     redirect("/dashboard/config?success=google_connected");
-  } catch {
+  } catch (error) {
+    if (isRedirectError(error)) throw error;
     redirect("/dashboard/config?error=google_callback_failed");
   }
 }
