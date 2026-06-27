@@ -41,6 +41,10 @@ export async function GET(request: NextRequest) {
     const daysBack = Number(request.nextUrl.searchParams.get("days") ?? "7");
     const safeDays = Number.isFinite(daysBack) && daysBack > 0 ? Math.min(daysBack, 30) : 7;
 
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - (safeDays - 1));
+    cutoffDate.setHours(0, 0, 0, 0);
+
     const { data: parsers, error: parsersError } = await db
       .from("parsers")
       .select("*")
@@ -72,7 +76,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const allDeposits: any[] = [];
+    const lastFetched = emailConfig.last_fetched_at
+      ? new Date(emailConfig.last_fetched_at)
+      : null;
+    const sinceDate = lastFetched && lastFetched > cutoffDate ? lastFetched : cutoffDate;
+
+    const parserIds = parsers.map((p) => p.id);
 
     for (const parserConfig of parsers) {
       const emailParser = getParser(parserConfig.parser_type);
@@ -82,13 +91,16 @@ export async function GET(request: NextRequest) {
         emailConfig.access_token,
         emailConfig.refresh_token,
         parserConfig.sender_email,
-        safeDays
+        safeDays,
+        sinceDate
       );
 
       for (const email of emails) {
         if (!emailParser.canParse(email.body)) continue;
 
         const parsed = emailParser.parse(email.body);
+
+        if (parsed.date && new Date(parsed.date) < cutoffDate) continue;
 
         const { data: existing } = await db
           .from("parsed_deposits")
@@ -112,14 +124,24 @@ export async function GET(request: NextRequest) {
             email_message_id: email.id,
           });
         }
-
-        allDeposits.push(parsed);
       }
     }
 
+    await db
+      .from("email_configs")
+      .update({ last_fetched_at: new Date().toISOString() })
+      .eq("id", emailConfig.id);
+
+    const { data: dbDeposits } = await db
+      .from("parsed_deposits")
+      .select("reference_number, origin_number, origin_name, destination_number, destination_name, amount, currency, concept, date, raw_email_text")
+      .in("parser_id", parserIds)
+      .gte("date", cutoffDate.toISOString())
+      .order("date", { ascending: false });
+
     return NextResponse.json({
       success: true,
-      data: allDeposits,
+      data: dbDeposits ?? [],
     });
   } catch (error) {
     console.error("Error fetching deposits:", error);

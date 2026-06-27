@@ -19,6 +19,7 @@ export interface EmailConfig {
   refresh_token: string
   token_expires_at: string | null
   is_active: boolean
+  last_fetched_at: string | null
 }
 
 export interface ParserConfig {
