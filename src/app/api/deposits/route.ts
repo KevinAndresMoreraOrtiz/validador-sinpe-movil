@@ -78,32 +78,10 @@ export async function GET(request: NextRequest) {
 
     const parserIds = parsers.map((p) => p.id);
 
-    const { data: existingDeposits, error: fetchError } = await db
-      .from("parsed_deposits")
-      .select("reference_number, origin_number, origin_name, destination_number, destination_name, amount, currency, concept, date, raw_email_text")
-      .in("parser_id", parserIds)
-      .gte("date", cutoffDate.toISOString())
-      .order("date", { ascending: false });
-
-    if (fetchError) {
-      console.error("Error fetching deposits from DB:", fetchError);
-      return NextResponse.json(
-        { success: false, data: [], error: `Error al consultar depósitos: ${fetchError.message}` },
-        { status: 500 }
-      );
-    }
-
     const lastFetched = emailConfig.last_fetched_at
-      ? new Date(emailConfig.last_fetched_at).getTime()
-      : 0;
-    const hoursSinceLastFetch = (Date.now() - lastFetched) / 3600000;
-
-    if (existingDeposits?.length && hoursSinceLastFetch < 1) {
-      return NextResponse.json({
-        success: true,
-        data: existingDeposits,
-      });
-    }
+      ? new Date(emailConfig.last_fetched_at)
+      : null;
+    const sinceDate = lastFetched && lastFetched > cutoffDate ? lastFetched : cutoffDate;
 
     for (const parserConfig of parsers) {
       const emailParser = getParser(parserConfig.parser_type);
@@ -113,7 +91,8 @@ export async function GET(request: NextRequest) {
         emailConfig.access_token,
         emailConfig.refresh_token,
         parserConfig.sender_email,
-        safeDays
+        safeDays,
+        sinceDate
       );
 
       for (const email of emails) {
@@ -162,20 +141,20 @@ export async function GET(request: NextRequest) {
       .update({ last_fetched_at: new Date().toISOString() })
       .eq("id", emailConfig.id);
 
-    const { data: updatedDeposits, error: refetchError } = await db
+    const { data: dbDeposits, error: queryError } = await db
       .from("parsed_deposits")
       .select("reference_number, origin_number, origin_name, destination_number, destination_name, amount, currency, concept, date, raw_email_text")
       .in("parser_id", parserIds)
       .gte("date", cutoffDate.toISOString())
       .order("date", { ascending: false });
 
-    if (refetchError) {
-      console.error("Error re-fetching deposits:", refetchError);
+    if (queryError) {
+      console.error("Error querying deposits:", queryError);
     }
 
     return NextResponse.json({
       success: true,
-      data: updatedDeposits ?? [],
+      data: dbDeposits ?? [],
     });
   } catch (error) {
     console.error("Error fetching deposits:", error);
