@@ -159,8 +159,8 @@ export async function GET(request: NextRequest) {
       .from("parsed_deposits")
       .select("reference_number, origin_number, origin_name, destination_number, destination_name, amount, currency, concept, date, raw_email_text")
       .in("parser_id", parserIds)
-      .or(`date.is.null,date.gte.${cutoffDate.toISOString()}`)
-      .order("date", { ascending: false, nullsFirst: false });
+      .gte("date", cutoffDate.toISOString())
+      .order("date", { ascending: false });
 
     if (dbError) {
       console.error("[deposits] DB query error:", dbError);
