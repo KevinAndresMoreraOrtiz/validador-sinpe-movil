@@ -44,6 +44,8 @@ export async function GET(request: NextRequest) {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - (safeDays - 1));
     cutoffDate.setHours(0, 0, 0, 0);
+    // Ajustar UTC→CostaRica (UTC-6): medianoche local = 06:00 UTC
+    cutoffDate.setTime(cutoffDate.getTime() - 6 * 60 * 60 * 1000);
 
     const { data: parsers, error: parsersError } = await db
       .from("parsers")
