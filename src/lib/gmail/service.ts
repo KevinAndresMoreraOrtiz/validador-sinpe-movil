@@ -12,8 +12,7 @@ export async function fetchEmailsFromSender(
   accessToken: string,
   refreshToken: string,
   senderEmail: string,
-  daysBack: number = 1,
-  sinceDate?: Date
+  daysBack: number = 1
 ): Promise<GmailMessage[]> {
   const auth = new google.auth.OAuth2(
     process.env.GMAIL_CLIENT_ID,
@@ -27,10 +26,7 @@ export async function fetchEmailsFromSender(
 
   const gmail = google.gmail({ version: "v1", auth });
 
-  const afterDate = sinceDate
-    ? `${sinceDate.getFullYear()}/${(sinceDate.getMonth() + 1).toString().padStart(2, "0")}/${sinceDate.getDate().toString().padStart(2, "0")}`
-    : daysDaysAgo(daysBack);
-  const query = `from:${senderEmail} after:${afterDate}`;
+  const query = `from:${senderEmail} after:${daysDaysAgo(daysBack)}`;
 
   const listRes = await gmail.users.messages.list({
     userId: "me",

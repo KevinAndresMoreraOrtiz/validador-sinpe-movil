@@ -76,11 +76,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const lastFetched = emailConfig.last_fetched_at
-      ? new Date(emailConfig.last_fetched_at)
-      : null;
-    const sinceDate = lastFetched && lastFetched > cutoffDate ? lastFetched : cutoffDate;
-
     const parserIds = parsers.map((p) => p.id);
 
     for (const parserConfig of parsers) {
@@ -91,8 +86,7 @@ export async function GET(request: NextRequest) {
         emailConfig.access_token,
         emailConfig.refresh_token,
         parserConfig.sender_email,
-        safeDays,
-        sinceDate
+        safeDays
       );
 
       for (const email of emails) {
@@ -132,12 +126,20 @@ export async function GET(request: NextRequest) {
       .update({ last_fetched_at: new Date().toISOString() })
       .eq("id", emailConfig.id);
 
-    const { data: dbDeposits } = await db
+    const { data: dbDeposits, error: queryError } = await db
       .from("parsed_deposits")
       .select("reference_number, origin_number, origin_name, destination_number, destination_name, amount, currency, concept, date, raw_email_text")
       .in("parser_id", parserIds)
       .gte("date", cutoffDate.toISOString())
       .order("date", { ascending: false });
+
+    if (queryError) {
+      console.error("Error querying parsed_deposits:", queryError);
+      return NextResponse.json(
+        { success: false, data: [], error: `Error al consultar depósitos: ${queryError.message}` },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
