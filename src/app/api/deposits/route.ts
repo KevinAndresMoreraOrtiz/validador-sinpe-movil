@@ -83,6 +83,8 @@ export async function GET(request: NextRequest) {
       : null;
     const sinceDate = lastFetched && lastFetched > cutoffDate ? lastFetched : cutoffDate;
 
+    const allDeposits: any[] = [];
+
     for (const parserConfig of parsers) {
       const emailParser = getParser(parserConfig.parser_type);
       if (!emailParser) continue;
@@ -100,8 +102,6 @@ export async function GET(request: NextRequest) {
 
         const parsed = emailParser.parse(email.body);
 
-        if (!parsed.date || new Date(parsed.date) < cutoffDate) continue;
-
         const { data: existing, error: dupError } = await db
           .from("parsed_deposits")
           .select("id")
@@ -110,10 +110,9 @@ export async function GET(request: NextRequest) {
 
         if (dupError) {
           console.error("Error checking duplicate:", dupError, parsed.reference_number);
-          continue;
         }
 
-        if (!existing) {
+        if (!existing && !dupError) {
           const { error: insertError } = await db.from("parsed_deposits").insert({
             parser_id: parserConfig.id,
             reference_number: parsed.reference_number,
@@ -133,28 +132,23 @@ export async function GET(request: NextRequest) {
             console.error("Error inserting deposit:", insertError, parsed.reference_number);
           }
         }
+
+        allDeposits.push(parsed);
       }
     }
 
-    await db
-      .from("email_configs")
-      .update({ last_fetched_at: new Date().toISOString() })
-      .eq("id", emailConfig.id);
+    console.log(`[deposits] emails_parsed=${allDeposits.length}, since=${sinceDate.toISOString()}, cutoff=${cutoffDate.toISOString()}`);
 
-    const { data: dbDeposits, error: queryError } = await db
-      .from("parsed_deposits")
-      .select("reference_number, origin_number, origin_name, destination_number, destination_name, amount, currency, concept, date, raw_email_text")
-      .in("parser_id", parserIds)
-      .gte("date", cutoffDate.toISOString())
-      .order("date", { ascending: false });
-
-    if (queryError) {
-      console.error("Error querying deposits:", queryError);
+    if (allDeposits.length > 0) {
+      await db
+        .from("email_configs")
+        .update({ last_fetched_at: new Date().toISOString() })
+        .eq("id", emailConfig.id);
     }
 
     return NextResponse.json({
       success: true,
-      data: dbDeposits ?? [],
+      data: allDeposits,
     });
   } catch (error) {
     console.error("Error fetching deposits:", error);
