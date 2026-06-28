@@ -41,11 +41,15 @@ export async function GET(request: NextRequest) {
     const daysBack = Number(request.nextUrl.searchParams.get("days") ?? "7");
     const safeDays = Number.isFinite(daysBack) && daysBack > 0 ? Math.min(daysBack, 30) : 7;
 
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - (safeDays - 1));
-    cutoffDate.setHours(0, 0, 0, 0);
-    // Ajustar UTC→CostaRica (UTC-6): medianoche local = 06:00 UTC
-    cutoffDate.setTime(cutoffDate.getTime() - 6 * 60 * 60 * 1000);
+    const now = new Date();
+    const crDate = new Date(now.getTime() - 6 * 3600000);
+    const cutoffDate = new Date(Date.UTC(
+      crDate.getUTCFullYear(),
+      crDate.getUTCMonth(),
+      crDate.getUTCDate(),
+      6, 0, 0, 0
+    ));
+    cutoffDate.setUTCDate(cutoffDate.getUTCDate() - (safeDays - 1));
 
     const { data: parsers, error: parsersError } = await db
       .from("parsers")
