@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
       : null;
     const sinceDate = lastFetched && lastFetched > cutoffDate ? lastFetched : cutoffDate;
 
-    const allDeposits: any[] = [];
+    const newDeposits: any[] = [];
 
     for (const parserConfig of parsers) {
       const emailParser = getParser(parserConfig.parser_type);
@@ -101,6 +101,8 @@ export async function GET(request: NextRequest) {
         if (!emailParser.canParse(email.body)) continue;
 
         const parsed = emailParser.parse(email.body);
+
+        if (parsed.date && new Date(parsed.date) < cutoffDate) continue;
 
         const { data: existing, error: dupError } = await db
           .from("parsed_deposits")
@@ -133,22 +135,42 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        allDeposits.push(parsed);
+        newDeposits.push(parsed);
       }
     }
 
-    console.log(`[deposits] emails_parsed=${allDeposits.length}, since=${sinceDate.toISOString()}, cutoff=${cutoffDate.toISOString()}`);
-
-    if (allDeposits.length > 0) {
+    if (newDeposits.length > 0) {
       await db
         .from("email_configs")
         .update({ last_fetched_at: new Date().toISOString() })
         .eq("id", emailConfig.id);
+
+      console.log(`[deposits] gmail_hit=${newDeposits.length}, since=${sinceDate.toISOString()}`);
+
+      return NextResponse.json({
+        success: true,
+        data: newDeposits,
+      });
     }
+
+    console.log(`[deposits] gmail_miss, checking DB, since=${sinceDate.toISOString()}, cutoff=${cutoffDate.toISOString()}`);
+
+    const { data: dbDeposits, error: dbError } = await db
+      .from("parsed_deposits")
+      .select("reference_number, origin_number, origin_name, destination_number, destination_name, amount, currency, concept, date, raw_email_text")
+      .in("parser_id", parserIds)
+      .or(`date.is.null,date.gte.${cutoffDate.toISOString()}`)
+      .order("date", { ascending: false, nullsFirst: false });
+
+    if (dbError) {
+      console.error("[deposits] DB query error:", dbError);
+    }
+
+    console.log(`[deposits] db_hit=${dbDeposits?.length ?? 0}`);
 
     return NextResponse.json({
       success: true,
-      data: allDeposits,
+      data: dbDeposits ?? [],
     });
   } catch (error) {
     console.error("Error fetching deposits:", error);
