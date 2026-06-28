@@ -4,6 +4,7 @@ import { sinpemovil } from "@/lib/supabase/sinpemovil";
 import { fetchEmailsFromSender } from "@/lib/gmail/service";
 import { getParser } from "@/lib/parsers/registry";
 import { hashToken } from "@/lib/utils";
+import type { ParsedDeposit } from "@/types";
 
 export async function GET(request: NextRequest) {
   try {
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const parserIds = parsers.map((p) => p.id);
+    const allDeposits: ParsedDeposit[] = [];
 
     for (const parserConfig of parsers) {
       const emailParser = getParser(parserConfig.parser_type);
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
 
         const parsed = emailParser.parse(email.body);
 
-        if (parsed.date && new Date(parsed.date) < cutoffDate) continue;
+        if (!parsed.date || new Date(parsed.date) < cutoffDate) continue;
 
         const { data: existing } = await db
           .from("parsed_deposits")
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
           .single();
 
         if (!existing) {
-          await db.from("parsed_deposits").insert({
+          const { error: insertError } = await db.from("parsed_deposits").insert({
             parser_id: parserConfig.id,
             reference_number: parsed.reference_number,
             origin_number: parsed.origin_number,
@@ -117,7 +118,13 @@ export async function GET(request: NextRequest) {
             raw_email_text: parsed.raw_email_text,
             email_message_id: email.id,
           });
+
+          if (insertError) {
+            console.error("Error inserting deposit:", insertError, parsed.reference_number);
+          }
         }
+
+        allDeposits.push(parsed);
       }
     }
 
@@ -126,24 +133,9 @@ export async function GET(request: NextRequest) {
       .update({ last_fetched_at: new Date().toISOString() })
       .eq("id", emailConfig.id);
 
-    const { data: dbDeposits, error: queryError } = await db
-      .from("parsed_deposits")
-      .select("reference_number, origin_number, origin_name, destination_number, destination_name, amount, currency, concept, date, raw_email_text")
-      .in("parser_id", parserIds)
-      .gte("date", cutoffDate.toISOString())
-      .order("date", { ascending: false });
-
-    if (queryError) {
-      console.error("Error querying parsed_deposits:", queryError);
-      return NextResponse.json(
-        { success: false, data: [], error: `Error al consultar depósitos: ${queryError.message}` },
-        { status: 500 }
-      );
-    }
-
     return NextResponse.json({
       success: true,
-      data: dbDeposits ?? [],
+      data: allDeposits,
     });
   } catch (error) {
     console.error("Error fetching deposits:", error);
