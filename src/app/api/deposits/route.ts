@@ -4,7 +4,6 @@ import { sinpemovil } from "@/lib/supabase/sinpemovil";
 import { fetchEmailsFromSender } from "@/lib/gmail/service";
 import { getParser } from "@/lib/parsers/registry";
 import { hashToken } from "@/lib/utils";
-import type { ParsedDeposit } from "@/types";
 
 export async function GET(request: NextRequest) {
   try {
@@ -77,7 +76,34 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const allDeposits: ParsedDeposit[] = [];
+    const parserIds = parsers.map((p) => p.id);
+
+    const { data: existingDeposits, error: fetchError } = await db
+      .from("parsed_deposits")
+      .select("reference_number, origin_number, origin_name, destination_number, destination_name, amount, currency, concept, date, raw_email_text")
+      .in("parser_id", parserIds)
+      .gte("date", cutoffDate.toISOString())
+      .order("date", { ascending: false });
+
+    if (fetchError) {
+      console.error("Error fetching deposits from DB:", fetchError);
+      return NextResponse.json(
+        { success: false, data: [], error: `Error al consultar depósitos: ${fetchError.message}` },
+        { status: 500 }
+      );
+    }
+
+    const lastFetched = emailConfig.last_fetched_at
+      ? new Date(emailConfig.last_fetched_at).getTime()
+      : 0;
+    const hoursSinceLastFetch = (Date.now() - lastFetched) / 3600000;
+
+    if (existingDeposits?.length && hoursSinceLastFetch < 1) {
+      return NextResponse.json({
+        success: true,
+        data: existingDeposits,
+      });
+    }
 
     for (const parserConfig of parsers) {
       const emailParser = getParser(parserConfig.parser_type);
@@ -97,11 +123,16 @@ export async function GET(request: NextRequest) {
 
         if (!parsed.date || new Date(parsed.date) < cutoffDate) continue;
 
-        const { data: existing } = await db
+        const { data: existing, error: dupError } = await db
           .from("parsed_deposits")
           .select("id")
           .eq("reference_number", parsed.reference_number)
-          .single();
+          .maybeSingle();
+
+        if (dupError) {
+          console.error("Error checking duplicate:", dupError, parsed.reference_number);
+          continue;
+        }
 
         if (!existing) {
           const { error: insertError } = await db.from("parsed_deposits").insert({
@@ -123,8 +154,6 @@ export async function GET(request: NextRequest) {
             console.error("Error inserting deposit:", insertError, parsed.reference_number);
           }
         }
-
-        allDeposits.push(parsed);
       }
     }
 
@@ -133,9 +162,20 @@ export async function GET(request: NextRequest) {
       .update({ last_fetched_at: new Date().toISOString() })
       .eq("id", emailConfig.id);
 
+    const { data: updatedDeposits, error: refetchError } = await db
+      .from("parsed_deposits")
+      .select("reference_number, origin_number, origin_name, destination_number, destination_name, amount, currency, concept, date, raw_email_text")
+      .in("parser_id", parserIds)
+      .gte("date", cutoffDate.toISOString())
+      .order("date", { ascending: false });
+
+    if (refetchError) {
+      console.error("Error re-fetching deposits:", refetchError);
+    }
+
     return NextResponse.json({
       success: true,
-      data: allDeposits,
+      data: updatedDeposits ?? [],
     });
   } catch (error) {
     console.error("Error fetching deposits:", error);
