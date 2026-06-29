@@ -150,16 +150,7 @@ export async function GET(request: NextRequest) {
         .from("email_configs")
         .update({ last_fetched_at: new Date().toISOString() })
         .eq("id", emailConfig.id);
-
-      console.log(`[deposits] gmail_hit=${newDeposits.length}, since=${sinceDate.toISOString()}`);
-
-      return NextResponse.json({
-        success: true,
-        data: newDeposits,
-      });
     }
-
-    console.log(`[deposits] gmail_miss, checking DB, since=${sinceDate.toISOString()}, cutoff=${cutoffDate.toISOString()}`);
 
     const { data: dbDeposits, error: dbError } = await db
       .from("parsed_deposits")
@@ -171,8 +162,6 @@ export async function GET(request: NextRequest) {
     if (dbError) {
       console.error("[deposits] DB query error:", dbError);
     }
-
-    console.log(`[deposits] db_hit=${dbDeposits?.length ?? 0}`);
 
     return NextResponse.json({
       success: true,
