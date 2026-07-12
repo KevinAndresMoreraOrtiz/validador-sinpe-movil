@@ -75,7 +75,9 @@ export class GrupoMutualParser implements EmailParser {
     const [, day, month, year, time] = parts;
     if (!months[month]) return null;
 
-    return `${year}-${month}-${day}T${this.normalizeTime(time)}`;
+    // Hora del correo es hora local CR (UTC-6). Sin offset, Postgres/JS
+    // lo tratan como UTC y el filtro del día calendario falla.
+    return `${year}-${month}-${day}T${this.normalizeTime(time)}-06:00`;
   }
 
   private normalizeTime(time: string): string {

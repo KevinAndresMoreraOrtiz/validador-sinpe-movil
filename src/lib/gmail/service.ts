@@ -27,15 +27,17 @@ export async function fetchEmailsFromSender(
 
   const gmail = google.gmail({ version: "v1", auth });
 
-  const afterDate = sinceDate
-    ? `${sinceDate.getFullYear()}/${(sinceDate.getMonth() + 1).toString().padStart(2, "0")}/${sinceDate.getDate().toString().padStart(2, "0")}`
-    : daysDaysAgo(daysBack);
-  const query = `from:${senderEmail} after:${afterDate}`;
+  // Gmail `after:YYYY/MM/DD` es exclusivo del día calendario y pierde
+  // los correos de "hoy". Usar epoch (segundos) es inclusivo y preciso.
+  const afterEpoch = sinceDate
+    ? Math.floor(sinceDate.getTime() / 1000)
+    : Math.floor(daysAgo(daysBack).getTime() / 1000);
+  const query = `from:${senderEmail} after:${afterEpoch}`;
 
   const listRes = await gmail.users.messages.list({
     userId: "me",
     q: query,
-    maxResults: 50,
+    maxResults: 100,
   });
 
   const messageIds = listRes.data.messages ?? [];
@@ -43,7 +45,7 @@ export async function fetchEmailsFromSender(
 
   const messages: GmailMessage[] = [];
 
-  for (const msg of messageIds.slice(0, 20)) {
+  for (const msg of messageIds) {
     if (!msg.id) continue;
 
     const detail = await gmail.users.messages.get({
@@ -56,6 +58,12 @@ export async function fetchEmailsFromSender(
     const from = headers.find((h) => h.name === "From")?.value ?? "";
     const subject = headers.find((h) => h.name === "Subject")?.value ?? "";
     const dateHeader = headers.find((h) => h.name === "Date")?.value ?? "";
+
+    // Filtrar por internalDate si sinceDate es más preciso que el día
+    if (sinceDate && detail.data.internalDate) {
+      const internalMs = Number(detail.data.internalDate);
+      if (internalMs < sinceDate.getTime()) continue;
+    }
 
     const body = extractBody(detail.data.payload);
 
@@ -71,10 +79,10 @@ export async function fetchEmailsFromSender(
   return messages;
 }
 
-function daysDaysAgo(days: number): string {
+function daysAgo(days: number): Date {
   const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toISOString().split("T")[0];
+  date.setUTCDate(date.getUTCDate() - days);
+  return date;
 }
 
 function extractBody(payload: unknown): string {

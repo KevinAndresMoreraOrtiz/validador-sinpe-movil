@@ -35,13 +35,13 @@ Endpoint principal. Consulta depósitos parseados desde Gmail.
 GET {{base_url}}/api/deposits?token={{api_token}}&days=1
 ```
 
-Parámetro opcional `days` (default servidor: 7, máximo: 30):
+Parámetro opcional `days` (default servidor: **1**, máximo: 30). Son días calendario en hora Costa Rica (desde 00:00 CR), no una ventana rodante de 24 horas:
 
 | Valor | Uso |
 |-------|-----|
-| `1` | Solo hoy |
-| `7` | Última semana |
-| `30` | Último mes |
+| `1` | Hoy (00:00 CR → ahora) |
+| `7` | Últimos 7 días calendario |
+| `30` | Último mes calendario |
 
 **Requisitos previos:**
 - Gmail conectado en `/dashboard/config`
