@@ -114,6 +114,20 @@ export default function ConfigPage() {
     loadData();
   }
 
+  const tokenExpiresAt = emailConfig?.token_expires_at
+    ? new Date(emailConfig.token_expires_at)
+    : null;
+  const tokenExpired = tokenExpiresAt
+    ? tokenExpiresAt.getTime() < Date.now()
+    : false;
+  const tokenExpiresLabel = tokenExpiresAt
+    ? new Intl.DateTimeFormat("es-CR", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "America/Costa_Rica",
+      }).format(tokenExpiresAt)
+    : null;
+
   return (
     <div className="space-y-8">
       {message && (
@@ -135,25 +149,70 @@ export default function ConfigPage() {
 
         {emailConfig ? (
           <div className="space-y-3">
-            <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-              <span className="text-2xl">✅</span>
-              <div>
-                <p className="font-medium text-green-800">
-                  Conectado como {emailConfig.email_address}
-                </p>
-                <p className="text-xs text-green-600">
-                  {emailConfig.token_expires_at
-                    ? `Token expira: ${new Date(emailConfig.token_expires_at).toLocaleString()}`
-                    : "Tokens configurados"}
-                </p>
+            <div
+              className={`rounded-lg border px-4 py-3 ${
+                tokenExpired
+                  ? "border-amber-300 bg-amber-50"
+                  : "border-emerald-200 bg-emerald-50"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <span
+                  className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                    tokenExpired
+                      ? "bg-amber-200 text-amber-900"
+                      : "bg-emerald-200 text-emerald-900"
+                  }`}
+                  aria-hidden
+                >
+                  {tokenExpired ? "!" : "✓"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`font-medium ${
+                      tokenExpired ? "text-amber-950" : "text-emerald-950"
+                    }`}
+                  >
+                    {tokenExpired ? "Sesión de Gmail vencida" : "Gmail conectado"}
+                  </p>
+                  <p
+                    className={`truncate text-sm ${
+                      tokenExpired ? "text-amber-800" : "text-emerald-800"
+                    }`}
+                  >
+                    {emailConfig.email_address}
+                  </p>
+                  <p
+                    className={`mt-1 text-xs ${
+                      tokenExpired ? "text-amber-700" : "text-emerald-700"
+                    }`}
+                  >
+                    {tokenExpiresLabel
+                      ? tokenExpired
+                        ? `Access token venció el ${tokenExpiresLabel}. Reconectá para renovar el acceso.`
+                        : `Access token válido hasta ${tokenExpiresLabel}`
+                      : "Tokens configurados"}
+                  </p>
+                </div>
               </div>
             </div>
-            <button
-              onClick={disconnectGoogle}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-            >
-              Desconectar cuenta
-            </button>
+
+            <div className="flex flex-wrap gap-2">
+              {tokenExpired && (
+                <a
+                  href="/api/auth/google"
+                  className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                >
+                  Reconectar con Google
+                </a>
+              )}
+              <button
+                onClick={disconnectGoogle}
+                className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+              >
+                Desconectar cuenta
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
