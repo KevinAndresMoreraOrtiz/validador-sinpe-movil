@@ -58,21 +58,34 @@ export async function fetchEmailsFromSender(
     const from = headers.find((h) => h.name === "From")?.value ?? "";
     const subject = headers.find((h) => h.name === "Subject")?.value ?? "";
     const dateHeader = headers.find((h) => h.name === "Date")?.value ?? "";
+    const internalMs = detail.data.internalDate
+      ? Number(detail.data.internalDate)
+      : NaN;
 
     // Filtrar por internalDate si sinceDate es más preciso que el día
-    if (sinceDate && detail.data.internalDate) {
-      const internalMs = Number(detail.data.internalDate);
+    if (sinceDate && Number.isFinite(internalMs)) {
       if (internalMs < sinceDate.getTime()) continue;
     }
 
     const body = extractBody(detail.data.payload);
+
+    // Preferir internalDate (epoch fiable); fallback al header Date.
+    let receivedAt = "";
+    if (Number.isFinite(internalMs)) {
+      receivedAt = new Date(internalMs).toISOString();
+    } else if (dateHeader) {
+      const parsedHeader = new Date(dateHeader);
+      if (!Number.isNaN(parsedHeader.getTime())) {
+        receivedAt = parsedHeader.toISOString();
+      }
+    }
 
     messages.push({
       id: msg.id,
       body,
       from,
       subject,
-      receivedAt: dateHeader,
+      receivedAt,
     });
   }
 

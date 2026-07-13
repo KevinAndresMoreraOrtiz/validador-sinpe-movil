@@ -86,7 +86,9 @@ export async function syncAndListDeposits(
       for (const email of emails) {
         if (!emailParser.canParse(email.body)) continue;
 
-        const parsed = emailParser.parse(email.body);
+        const parsed = emailParser.parse(email.body, {
+          receivedAt: email.receivedAt || null,
+        });
 
         if (parsed.date && new Date(parsed.date) < cutoffDate) continue;
 

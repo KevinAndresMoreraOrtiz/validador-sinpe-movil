@@ -1,5 +1,6 @@
-import type { EmailParser } from "./types";
+import type { EmailParser, ParseContext } from "./types";
 import type { ParsedDeposit } from "@/types";
+import { CR_OFFSET_MS } from "@/lib/utils";
 
 export class GrupoMutualParser implements EmailParser {
   type = "grupo_mutual";
@@ -17,7 +18,7 @@ export class GrupoMutualParser implements EmailParser {
     );
   }
 
-  parse(body: string): ParsedDeposit {
+  parse(body: string, context?: ParseContext): ParsedDeposit {
     const originMatch = body.match(
       /el origen de la transferencia es\s*(\d+)\s*a nombre de\s*(.+?)\s*y el destino de la transferencia/i
     );
@@ -37,11 +38,12 @@ export class GrupoMutualParser implements EmailParser {
 
     const amountRaw = amountMatch?.[1]?.replace(/,/g, "") ?? null;
     const dateRaw = dateMatch?.[1] ?? null;
+    const reference = referenceMatch?.[1] ?? "unknown";
 
     const parsedDate = dateRaw ? this.parseDate(dateRaw) : null;
 
     return {
-      reference_number: referenceMatch?.[1] ?? "unknown",
+      reference_number: reference,
       origin_number: originMatch?.[1] ?? null,
       origin_name: originMatch?.[2]?.trim() ?? null,
       destination_number: destinationMatch?.[1] ?? null,
@@ -54,9 +56,93 @@ export class GrupoMutualParser implements EmailParser {
           : "CRC"
         : "CRC",
       concept: conceptMatch?.[1]?.trim() || null,
-      date: parsedDate,
+      // Fuente principal: día+hora del cuerpo. Recibo y llegada del correo
+      // solo confirman si Mutual puso mal el día (nunca la llegada sola).
+      date: this.reconcileDepositDate(
+        parsedDate,
+        reference,
+        context?.receivedAt
+      ),
       raw_email_text: body,
     };
+  }
+
+  /**
+   * Por defecto se usa día y hora del cuerpo.
+   * Solo se corrige el día si el recibo YYYYMMDD discrepa y la llegada
+   * del correo lo confirma (mismo día que el recibo). Así un depósito
+   * de ayer cuyo correo llega hoy se queda en ayer.
+   */
+  private reconcileDepositDate(
+    dateIso: string | null,
+    reference: string,
+    receivedAt?: string | Date | null
+  ): string | null {
+    if (!dateIso) return dateIso;
+
+    const bodyYmd = this.ymdFromIsoLocal(dateIso);
+    if (!bodyYmd) return dateIso;
+
+    const refYmd = this.ymdFromReference(reference);
+    const receivedYmd = this.ymdFromReceivedAt(receivedAt);
+
+    // Corrección solo con evidencia cruzada: recibo ≠ cuerpo y
+    // llegada del correo coincide con el recibo.
+    if (
+      refYmd &&
+      receivedYmd &&
+      refYmd !== bodyYmd &&
+      refYmd === receivedYmd
+    ) {
+      return this.withYmd(dateIso, refYmd);
+    }
+
+    return dateIso;
+  }
+
+  private ymdFromReference(reference: string): string | null {
+    if (reference.length < 8) return null;
+    const refYmd = reference.slice(0, 8);
+    if (!/^\d{8}$/.test(refYmd)) return null;
+
+    const monthNum = Number(refYmd.slice(4, 6));
+    const dayNum = Number(refYmd.slice(6, 8));
+    if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+      return null;
+    }
+    return refYmd;
+  }
+
+  private ymdFromReceivedAt(
+    receivedAt?: string | Date | null
+  ): string | null {
+    if (!receivedAt) return null;
+    const d = receivedAt instanceof Date ? receivedAt : new Date(receivedAt);
+    if (Number.isNaN(d.getTime())) return null;
+
+    // Día calendario en Costa Rica (UTC-6).
+    const cr = new Date(d.getTime() - CR_OFFSET_MS);
+    const y = cr.getUTCFullYear();
+    const m = String(cr.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(cr.getUTCDate()).padStart(2, "0");
+    return `${y}${m}${day}`;
+  }
+
+  /** YYYYMMDD desde ISO con offset explícito (…-06:00) o Z. */
+  private ymdFromIsoLocal(dateIso: string): string | null {
+    const m = dateIso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    return `${m[1]}${m[2]}${m[3]}`;
+  }
+
+  private withYmd(dateIso: string, ymd: string): string {
+    const year = ymd.slice(0, 4);
+    const month = ymd.slice(4, 6);
+    const day = ymd.slice(6, 8);
+    const timePart = dateIso.includes("T")
+      ? dateIso.slice(11)
+      : "00:00:00-06:00";
+    return `${year}-${month}-${day}T${timePart}`;
   }
 
   private parseDate(dateStr: string): string | null {
