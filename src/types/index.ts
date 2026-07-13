@@ -44,4 +44,5 @@ export interface DepositResponse {
   success: boolean
   data: ParsedDeposit[]
   error?: string
+  warning?: string
 }

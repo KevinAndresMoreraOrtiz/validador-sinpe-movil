@@ -2,7 +2,17 @@ import Link from "next/link";
 
 export default function DashboardPage() {
   return (
-    <div className="grid gap-6 sm:grid-cols-2">
+    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <Link
+        href="/dashboard/deposits"
+        className="rounded-xl border bg-white p-6 shadow-sm transition hover:shadow-md"
+      >
+        <h2 className="mb-2 text-lg font-semibold">Depósitos</h2>
+        <p className="text-sm text-gray-600">
+          Consulta y sincroniza los depósitos SINPE del día en una tabla.
+        </p>
+      </Link>
+
       <Link
         href="/dashboard/config"
         className="rounded-xl border bg-white p-6 shadow-sm transition hover:shadow-md"
